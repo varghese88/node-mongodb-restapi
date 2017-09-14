@@ -1,38 +1,50 @@
 const mongodb = require('mongodb').MongoClient;
-const config = require('./config');
 const _ = require('lodash');
 const fs = require('fs');
 let url = '';
-
-if(!_.isEmpty(config.user) && !_.isEmpty(config.password)){
-    url = 'mongodb://'+ config.user+':'+config.password+'@'+config.ip+':'+config.port+'/tasklist';
+if(!_.isEmpty(process.env.USER_NAME) && !_.isEmpty(process.env.PASSWORD)){
+    url = 'mongodb://'+ process.env.USER_NAME + ':'+ process.env.PASSWORD + '@'+ process.env.URL + '/tasklist';
 } else {
-    url = 'mongodb://'+ config.ip+':'+config.port+'/tasklist';
+    url = 'mongodb://'+ process.env.URL + '/tasklist';
 }
-const createCollection = function(db,collectionName) {
+const createCollection = (db,collectionName,callback) => {
     db.createCollection(collectionName,function(err, results) {
-        console.log("Collection created.");
+        console.log("------------Collection created.------------");
+        callback(err)
     });
 };
-module.exports.init = function (callback) {
-    mongodb.connect(url,function(err, db) {
+
+const dataInsertion = (db,collection,callback) => {
+    fs.readFile('./api/data.json', 'utf8', (err, data) => {
+        if(err) throw err;
+        collection.insert(JSON.parse(data),(err, docs) => {
+            db.close();
+            callback(err)
+        });
+    })
+};
+const collectionCount = (db,collection,callback) => {
+    collection.count().then((count,err) => {
+        if(err) throw err
+        if(count === 0){
+            dataInsertion(db,collection,(err) => {
+                callback(err)
+            });
+        }
+    })
+} 
+module.exports.init =  (callback) => {
+    mongodb.connect(url,(err, db) => {
         callback(err);  
         module.exports.db = db
-        createCollection(db,'users');
-        const collection = db.collection('users');
-        module.exports.users = collection;
-        collection.count().then(function(count,err){
-            if(err) throw err
-            if(count === 0){
-                fs.readFile('./api/data.json', 'utf8', function (error, data) {
-                    if(err) throw err;
-                    collection.insert(JSON.parse(data), function(err, docs) {
-                        console.log('Data inserted');
-                        db.close();
-                    });
-                })
-            }
-            
+        createCollection(db,'users',(err) => {
+            if(err) throw err;
+            const collection = db.collection('users');
+            module.exports.users = collection;
+            collectionCount(db,collection,(err) => {
+                if(err) throw err;
+                console.log("------------Data inserted sucessfully.------------")
+            })
         })        
     })
 }
